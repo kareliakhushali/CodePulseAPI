@@ -1,6 +1,7 @@
 using CodePulseAPI.Data;
 using CodePulseAPI.Repositories.Implementation;
 using CodePulseAPI.Repositories.Interface;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.HttpsPolicy;
@@ -18,6 +19,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
+using Microsoft.IdentityModel.Tokens;
 
 namespace CodePulseAPI
 {
@@ -42,9 +44,13 @@ namespace CodePulseAPI
             });
             services.AddDbContext<ApplicationDbContext>(options =>
           options.UseSqlServer(Configuration.GetConnectionString("CodePulseDb")));
+            services.AddDbContext<AuthDbContext>(options =>
+          options.UseSqlServer(Configuration.GetConnectionString("CodePulseDb")));
             services.AddScoped<ICategoryRepository, CategoryRespository>();
             services.AddScoped<IBlogPostRepository, BlogPostRepository>();
             services.AddScoped<IImageRepository, ImageRepository>();
+            services.AddScoped<ITokenRepository, TokenRepository>();
+                
             services.AddIdentityCore<IdentityUser>()
                 .AddRoles<IdentityRole>()
                 .AddTokenProvider<DataProtectorTokenProvider<IdentityUser>>("CodePulse")
@@ -56,7 +62,27 @@ namespace CodePulseAPI
                 options.Password.RequireLowercase = false;
                 options.Password.RequireNonAlphanumeric = false;
                 options.Password.RequireUppercase = false;
+                options.Password.RequiredLength = 6;
+                options.Password.RequiredUniqueChars = 1;
+                
             });
+            services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+                .AddJwtBearer(options =>
+                {
+                    options.TokenValidationParameters = new TokenValidationParameters
+                    {
+                        AuthenticationType = "Jwt",
+                        ValidateIssuer = true,
+                        ValidateAudience = true,
+                        ValidateLifetime = true,
+                        ValidateIssuerSigningKey = true,
+                        ValidIssuer = Configuration["Jwt:Issuer"],
+                        ValidAudience = Configuration["Jwt:Audience"],
+                        IssuerSigningKey = new SymmetricSecurityKey(System.Text.Encoding.UTF8.GetBytes(Configuration["Jwt:Key"]))
+
+                    };
+                });
+            services.AddHttpContextAccessor();
 
         }
 
@@ -74,8 +100,8 @@ namespace CodePulseAPI
 
             app.UseRouting();
             app.UseCors(policy => policy.AllowAnyHeader().AllowAnyMethod().AllowAnyOrigin());
-    
 
+            app.UseAuthentication();
             app.UseAuthorization();
             app.UseStaticFiles(new StaticFileOptions
             {
